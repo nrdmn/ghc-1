@@ -1428,11 +1428,11 @@ by saying ``-fno-wombat``.
     potential inlining.
 
 .. ghc-flag:: -funfolding-case-threshold=⟨n⟩
-    :shortdesc: *default: 1.* Reduce inlining for cases nested deeper than n.
+    :shortdesc: *default: 2.* Reduce inlining for cases nested deeper than n.
     :type: dynamic
     :category:
 
-    :default: 1
+    :default: 2
 
     .. index::
        single: inlining, controlling
@@ -1454,16 +1454,17 @@ by saying ``-fno-wombat``.
     In such cases this flag can be used to ignore the first ⟨n⟩ levels of nesting
     when computing the penalty.
 
-
-    :ghc-flag:`-funfolding-case-scaling=⟨n⟩` controls how fast the penalty
-    grows with the depth of the nesting.
+    This flag in combination with :ghc-flag:`-funfolding-case-scaling=⟨n⟩` can
+    be used to break inlining loops without disabling inlining completely. For
+    this purpose a smaller value is more likely to break such loops although
+    often adjusting the scaling is enough and preferably.
 
 .. ghc-flag:: -funfolding-case-scaling=⟨n⟩
     :shortdesc: *default: 25.* Apply a penalty of (inlining_cost * `1/n`) for each level of case nesting.
     :type: dynamic
     :category:
 
-    :default: 1
+    :default: 25
 
     .. index::
        single: inlining, controlling
@@ -1487,6 +1488,11 @@ by saying ``-fno-wombat``.
     Cases are only counted against the nesting level if they have more than one alternative.
 
     We use 1/n to scale the penalty. That is a higher value gives a lower penalty.
+
+    This can be used to break inlining loops. For this purpose a lower value is
+    recommended. Values in the range 10 <= n <= 20 allow some inlining to take place
+    while still allowing GHC to compile modules containing such inlining loops.
+
 
 .. ghc-flag:: -fworker-wrapper
     :shortdesc: Enable the worker/wrapper transformation.
@@ -1520,3 +1526,5 @@ by saying ``-fno-wombat``.
     This flag sets the size (in bytes) threshold above which the second approach
     is used. You can disable the second approach entirely by setting the
     threshold to 0.
+
+
