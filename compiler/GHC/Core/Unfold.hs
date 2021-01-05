@@ -115,7 +115,7 @@ defaultUnfoldingOpts = UnfoldingOpts
 
       -- Only apply scaling once we are deeper than threshold cases
       -- in an RHS.
-   , unfoldingCaseThreshold = 1
+   , unfoldingCaseThreshold = 2
 
       -- Penalize depth with (size*depth)/scaling
    , unfoldingCaseScaling = 25
