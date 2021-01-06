@@ -1764,7 +1764,7 @@ defaultTyVar default_kind tv
 
   | isTyVarTyVar tv
     -- Do not default TyVarTvs. Doing so would violate the invariants
-    -- on TyVarTvs; see Note [Signature skolems] in GHC.Tc.Utils.TcType.
+    -- on TyVarTvs; see Note [TyVarTv] in GHC.Tc.Utils.TcMType.
     -- #13343 is an example; #14555 is another
     -- See Note [Inferring kinds for type declarations] in GHC.Tc.TyCl
   = return False

@@ -2369,7 +2369,11 @@ mightMatchLater given_pred given_loc wanted_pred wanted_loc
 
      -- CycleBreakerTvs really stands for a type family application in
      -- a given; these won't contain touchable meta-variables
-    is_meta_tv = isMetaTyVar <&&> not . isCycleBreakerTyVar
+     -- TyVarTvs come from partial type signatures and represent
+     -- a skolem; they should not be unified here. See Note [TyVarTv] in
+     -- GHC.Tc.Utils.TcMType. Forgetting the check for isTyVarTyVar led
+     -- to #19106.
+    is_meta_tv = isMetaTyVar <&&> not . (isCycleBreakerTyVar <||> isTyVarTyVar)
 
 prohibitedSuperClassSolve :: CtLoc -> CtLoc -> Bool
 -- See Note [Solving superclass constraints] in GHC.Tc.TyCl.Instance
