@@ -192,10 +192,6 @@ lintStgExpr app@(StgConApp con args _arg_tys) = do
 lintStgExpr (StgOpApp _ args _) =
     mapM_ lintStgArg args
 
-lintStgExpr lam@(StgLam _ _) = do
-    opts <- getStgPprOpts
-    addErrL (text "Unexpected StgLam" <+> pprStgExpr opts lam)
-
 lintStgExpr (StgLet _ binds body) = do
     binders <- lintStgBinds NotTopLevel binds
     addLoc (BodyOfLetRec binders) $
@@ -217,6 +213,10 @@ lintStgExpr (StgCase scrut bndr alts_type alts) = do
     let in_scope = stgCaseBndrInScope alts_type (lf_unarised lf)
 
     addInScopeVars [bndr | in_scope] (mapM_ lintAlt alts)
+
+lintStgExpr xStgExpr@(XStgExpr _) = do
+    opts <- getStgPprOpts
+    addErrL (text "Unexpected XStgExpr" <+> pprStgExpr opts xStgExpr)
 
 lintAlt
     :: (OutputablePass a, BinderP a ~ Id)

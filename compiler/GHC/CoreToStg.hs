@@ -1,4 +1,6 @@
 {-# LANGUAGE CPP, DeriveFunctor #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DataKinds #-}
 
 --
 -- (c) The GRASP/AQUA Project, Glasgow University, 1993-1998
@@ -52,7 +54,7 @@ import GHC.Types.SrcLoc    ( mkGeneralSrcSpan )
 import GHC.Builtin.Names   ( unsafeEqualityProofName )
 
 import Control.Monad (ap)
-import Data.List.NonEmpty (nonEmpty, toList)
+import Data.List.NonEmpty (NonEmpty, nonEmpty, toList)
 import Data.Maybe (fromMaybe)
 import Data.Tuple (swap)
 import qualified Data.Set as Set
@@ -330,10 +332,11 @@ coreToTopStgRhs dflags ccs this_mod (bndr, rhs)
 
        ; let (stg_rhs, ccs') =
                mkTopStgRhs dflags this_mod ccs bndr new_rhs
+             stg_rhs' = coerceStgRhs stg_rhs
              stg_arity =
-               stgRhsArity stg_rhs
+               stgRhsArity stg_rhs'
 
-       ; return (ASSERT2( arity_ok stg_arity, mk_arity_msg stg_arity) stg_rhs,
+       ; return (ASSERT2( arity_ok stg_arity, mk_arity_msg stg_arity) stg_rhs',
                  ccs') }
   where
         -- It's vital that the arity on a top-level Id matches
@@ -361,7 +364,7 @@ coreToTopStgRhs dflags ccs this_mod (bndr, rhs)
 
 coreToStgExpr
         :: CoreExpr
-        -> CtsM StgExpr
+        -> CtsM SgStgExpr
 
 -- The second and third components can be derived in a simple bottom up pass, not
 -- dependent on any decisions about which variables will be let-no-escaped or
@@ -399,7 +402,7 @@ coreToStgExpr expr@(Lam _ _)
     let
         result_expr = case nonEmpty args' of
           Nothing     -> body'
-          Just args'' -> StgLam args'' body'
+          Just args'' -> XStgExpr $ StgLam args'' body'
 
     return result_expr
 
@@ -448,7 +451,7 @@ coreToStgExpr e0@(Case scrut bndr _ alts) = do
               text "STG:" $$ pprStgExpr panicStgPprOpts stg
       _ -> return stg
   where
-    vars_alt :: (AltCon, [Var], CoreExpr) -> CtsM (AltCon, [Var], StgExpr)
+    vars_alt :: (AltCon, [Var], CoreExpr) -> CtsM (AltCon, [Var], SgStgExpr)
     vars_alt (con, binders, rhs)
       | DataAlt c <- con, c == unboxedUnitDataCon
       = -- This case is a bit smelly.
@@ -515,7 +518,7 @@ mkStgAltType bndr alts
 coreToStgApp :: Id            -- Function
              -> [CoreArg]     -- Arguments
              -> [Tickish Id]  -- Debug ticks
-             -> CtsM StgExpr
+             -> CtsM SgStgExpr
 coreToStgApp f args ticks = do
     (args', ticks') <- coreToStgArgs args
     how_bound <- lookupVarCts f
@@ -624,7 +627,7 @@ coreToStgArgs (arg : args) = do         -- Non-type argument
 coreToStgLet
          :: CoreBind     -- bindings
          -> CoreExpr     -- body
-         -> CtsM StgExpr -- new let
+         -> CtsM SgStgExpr -- new let
 
 coreToStgLet bind body = do
     (bind2, body2)
@@ -650,7 +653,7 @@ coreToStgLet bind body = do
         = (binder, LetBound NestedLet (manifestArity rhs))
 
     vars_bind :: CoreBind
-              -> CtsM (StgBinding,
+              -> CtsM (SgStgBinding,
                        [(Id, HowBound)])  -- extension to environment
 
     vars_bind (NonRec binder rhs) = do
@@ -671,7 +674,7 @@ coreToStgLet bind body = do
               return (StgRec (binders `zip` rhss2), env_ext)
 
 coreToStgRhs :: (Id,CoreExpr)
-             -> CtsM StgRhs
+             -> CtsM SgStgRhs
 
 coreToStgRhs (bndr, rhs) = do
     new_rhs <- coreToStgExpr rhs
@@ -680,10 +683,10 @@ coreToStgRhs (bndr, rhs) = do
 -- Generate a top-level RHS. Any new cost centres generated for CAFs will be
 -- appended to `CollectedCCs` argument.
 mkTopStgRhs :: DynFlags -> Module -> CollectedCCs
-            -> Id -> StgExpr -> (StgRhs, CollectedCCs)
+            -> Id -> SgStgExpr -> (SgStgRhs, CollectedCCs)
 
 mkTopStgRhs dflags this_mod ccs bndr rhs
-  | StgLam bndrs body <- rhs
+  | XStgExpr (StgLam bndrs body) <- rhs
   = -- StgLam can't have empty arguments, so not CAF
     ( StgRhsClosure noExtFieldSilent
                     dontCareCCS
@@ -732,9 +735,9 @@ mkTopStgRhs dflags this_mod ccs bndr rhs
 
 -- Generate a non-top-level RHS. Cost-centre is always currentCCS,
 -- see Note [Cost-centre initialization plan].
-mkStgRhs :: Id -> StgExpr -> StgRhs
+mkStgRhs :: Id -> SgStgExpr -> SgStgRhs
 mkStgRhs bndr rhs
-  | StgLam bndrs body <- rhs
+  | XStgExpr (StgLam bndrs body) <- rhs
   = StgRhsClosure noExtFieldSilent
                   currentCCS
                   ReEntrant
@@ -945,3 +948,46 @@ stgArity :: Id -> HowBound -> Arity
 stgArity _ (LetBound _ arity) = arity
 stgArity f ImportBound        = idArity f
 stgArity _ LambdaBound        = 0
+
+data StgLam = StgLam
+  (NonEmpty Id)
+  SgStgExpr
+
+instance Outputable StgLam where
+  ppr (StgLam bndrs body) = let ppr_list = brackets . fsep . punctuate comma
+    in sep [ char '\\' <+> ppr_list (map (pprBndr LambdaBind) (toList bndrs))
+               <+> text "->"
+           , pprStgExpr (StgPprOpts True) body
+           ]
+
+type instance BinderP 'StgGen = Id
+
+type instance XRhsClosure 'StgGen = NoExtFieldSilent
+
+type instance XLet 'StgGen = NoExtFieldSilent
+
+type instance XLetNoEscape 'StgGen = NoExtFieldSilent
+
+type instance XXStgExpr 'StgGen = StgLam
+
+coerceStgRhs :: SgStgRhs -> StgRhs
+coerceStgRhs (StgRhsCon cc con args) = StgRhsCon cc con args
+coerceStgRhs (StgRhsClosure ext cc upd_flag args body) = StgRhsClosure ext cc upd_flag args (coerceStgExpr body)
+  where
+    coerceStgExpr :: SgStgExpr -> StgExpr
+    coerceStgExpr (StgApp func args) = StgApp func args
+    coerceStgExpr (StgLit lit) = StgLit lit
+    coerceStgExpr (StgConApp con args tys) = StgConApp con args tys
+    coerceStgExpr (StgOpApp op args ty) = StgOpApp op args ty
+    coerceStgExpr (StgCase scrut bndr alt_type alts) = StgCase (coerceStgExpr scrut) bndr alt_type ((fmap . fomap) coerceStgExpr alts)
+    coerceStgExpr (StgLet ext bind expr) = StgLet ext (coerceStgBinding bind) (coerceStgExpr expr)
+    coerceStgExpr (StgLetNoEscape ext bind expr) = StgLetNoEscape ext (coerceStgBinding bind) (coerceStgExpr expr)
+    coerceStgExpr (StgTick tick expr) = StgTick tick (coerceStgExpr expr)
+    coerceStgExpr (XStgExpr _) = pprPanic "CoreToStg.coerceStgExpr" (text "StgLam")
+
+    coerceStgBinding :: SgStgBinding -> StgBinding
+    coerceStgBinding (StgNonRec bndr rhs) = StgNonRec bndr (coerceStgRhs rhs)
+    coerceStgBinding (StgRec binds) = StgRec $ (fmap . fmap) coerceStgRhs binds
+
+    fomap :: (a -> b) -> (c, d, a) -> (c, d, b)
+    fomap f (c, d, a) = (c, d, f a)

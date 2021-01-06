@@ -25,7 +25,7 @@ module GHC.Stg.Syntax (
         GenStgTopBinding(..), GenStgBinding(..), GenStgExpr(..), GenStgRhs(..),
         GenStgAlt, AltType(..),
 
-        StgPass(..), BinderP, XRhsClosure, XLet, XLetNoEscape,
+        StgPass(..), BinderP, XRhsClosure, XLet, XLetNoEscape, XXStgExpr,
         NoExtFieldSilent, noExtFieldSilent,
         OutputablePass,
 
@@ -39,6 +39,9 @@ module GHC.Stg.Syntax (
 
         -- a set of synonyms for the lambda lifting parameterisation
         LlStgTopBinding, LlStgBinding, LlStgExpr, LlStgRhs, LlStgAlt,
+
+        -- a set of synonyms for the core to stg parameterisation
+        SgStgTopBinding, SgStgBinding, SgStgExpr, SgStgRhs, SgStgAlt,
 
         -- a set of synonyms to distinguish in- and out variants
         InStgArg,  InStgTopBinding,  InStgBinding,  InStgExpr,  InStgRhs,  InStgAlt,
@@ -73,6 +76,7 @@ import Data.Data   ( Data )
 import Data.List   ( intersperse )
 import GHC.Core.DataCon
 import GHC.Driver.Session
+import GHC.Hs.Extension ( NoExtCon )
 import GHC.Types.ForeignCall ( ForeignCall )
 import GHC.Types.Id
 import GHC.Types.Name        ( isDynLinkName )
@@ -88,8 +92,6 @@ import GHC.Core.Type     ( Type )
 import GHC.Types.RepType ( typePrimRep1 )
 import GHC.Utils.Misc
 import GHC.Utils.Panic
-
-import Data.List.NonEmpty ( NonEmpty, toList )
 
 {-
 ************************************************************************
@@ -256,22 +258,6 @@ literals.
 {-
 ************************************************************************
 *                                                                      *
-StgLam
-*                                                                      *
-************************************************************************
-
-StgLam is used *only* during CoreToStg's work. Before CoreToStg has finished it
-encodes (\x -> e) as (let f = \x -> e in f) TODO: Encode this via an extension
-to GenStgExpr à la TTG.
--}
-
-  | StgLam
-        (NonEmpty (BinderP pass))
-        StgExpr    -- Body of lambda
-
-{-
-************************************************************************
-*                                                                      *
 GenStgExpr: case-expressions
 *                                                                      *
 ************************************************************************
@@ -386,6 +372,8 @@ Finally for @hpc@ expressions we introduce a new STG construct.
     (Tickish Id)
     (GenStgExpr pass)       -- sub expression
 
+  | XStgExpr !(XXStgExpr pass)
+
 -- END of GenStgExpr
 
 {-
@@ -441,6 +429,7 @@ data StgPass
   = Vanilla
   | LiftLams
   | CodeGen
+  | StgGen
 
 -- | Like 'GHC.Hs.Extension.NoExtField', but with an 'Outputable' instance that
 -- returns 'empty'.
@@ -475,6 +464,10 @@ type instance XLet 'CodeGen = NoExtFieldSilent
 type family XLetNoEscape (pass :: StgPass)
 type instance XLetNoEscape 'Vanilla = NoExtFieldSilent
 type instance XLetNoEscape 'CodeGen = NoExtFieldSilent
+
+type family XXStgExpr (pass :: StgPass)
+type instance XXStgExpr 'Vanilla = NoExtCon
+type instance XXStgExpr 'CodeGen = NoExtCon
 
 stgRhsArity :: StgRhs -> Int
 stgRhsArity (StgRhsClosure _ _ _ bndrs _)
@@ -540,6 +533,12 @@ type CgStgBinding    = GenStgBinding    'CodeGen
 type CgStgExpr       = GenStgExpr       'CodeGen
 type CgStgRhs        = GenStgRhs        'CodeGen
 type CgStgAlt        = GenStgAlt        'CodeGen
+
+type SgStgTopBinding = GenStgTopBinding 'StgGen
+type SgStgBinding    = GenStgBinding    'StgGen
+type SgStgExpr       = GenStgExpr       'StgGen
+type SgStgRhs        = GenStgRhs        'StgGen
+type SgStgAlt        = GenStgAlt        'StgGen
 
 {- Many passes apply a substitution, and it's very handy to have type
    synonyms to remind us whether or not the substitution has been applied.
@@ -644,6 +643,7 @@ type OutputablePass pass =
   ( Outputable (XLet pass)
   , Outputable (XLetNoEscape pass)
   , Outputable (XRhsClosure pass)
+  , Outputable (XXStgExpr pass)
   , OutputableBndr (BinderP pass)
   )
 
@@ -709,11 +709,6 @@ pprStgExpr opts e = case e of
    StgApp func args     -> hang (ppr func) 4 (interppSP args)
    StgConApp con args _ -> hsep [ ppr con, brackets (interppSP args) ]
    StgOpApp op args _   -> hsep [ pprStgOp op, brackets (interppSP args)]
-   StgLam bndrs body    -> let ppr_list = brackets . fsep . punctuate comma
-                           in sep [ char '\\' <+> ppr_list (map (pprBndr LambdaBind) (toList bndrs))
-                                      <+> text "->"
-                                  , pprStgExpr opts body
-                                  ]
 
 -- special case: let v = <very specific thing>
 --               in
@@ -786,6 +781,7 @@ pprStgExpr opts e = case e of
              , char '}'
              ]
 
+   XStgExpr xStgExpr -> ppr xStgExpr
 
 pprStgAlt :: OutputablePass pass => StgPprOpts -> Bool -> GenStgAlt pass -> SDoc
 pprStgAlt opts indent (con, params, expr)

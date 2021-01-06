@@ -27,6 +27,7 @@ import GHC.Platform.Profile
 import GHC.Types.Basic
 import GHC.Types.Demand
 import GHC.Driver.Session
+import GHC.Hs.Extension ( NoExtCon )
 import GHC.Types.Id
 import GHC.Runtime.Heap.Layout ( WordOff )
 import GHC.Stg.Syntax
@@ -34,7 +35,6 @@ import qualified GHC.StgToCmm.ArgRep  as StgToCmm.ArgRep
 import qualified GHC.StgToCmm.Closure as StgToCmm.Closure
 import qualified GHC.StgToCmm.Layout  as StgToCmm.Layout
 import GHC.Utils.Outputable
-import GHC.Utils.Panic
 import GHC.Utils.Misc
 import GHC.Types.Var.Set
 
@@ -115,6 +115,7 @@ type instance BinderP      'LiftLams = BinderInfo
 type instance XRhsClosure  'LiftLams = DIdSet
 type instance XLet         'LiftLams = Skeleton
 type instance XLetNoEscape 'LiftLams = Skeleton
+type instance XXStgExpr    'LiftLams = NoExtCon
 
 freeVarsOfRhs :: (XRhsClosure pass ~ DIdSet) => GenStgRhs pass -> DIdSet
 freeVarsOfRhs (StgRhsCon _ _ args) = mkDVarSet [ id | StgVarArg id <- args ]
@@ -223,7 +224,6 @@ tagSkeletonExpr (StgApp f args)
       -- argument occurrences, see "GHC.Stg.Lift.Analysis#arg_occs".
       | null args = unitVarSet f
       | otherwise = mkArgOccs args
-tagSkeletonExpr (StgLam _ _) = pprPanic "stgLiftLams" (text "StgLam")
 tagSkeletonExpr (StgCase scrut bndr ty alts)
   = (skel, arg_occs, StgCase scrut' bndr' ty alts')
   where
