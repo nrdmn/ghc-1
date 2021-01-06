@@ -118,7 +118,7 @@ defaultUnfoldingOpts = UnfoldingOpts
    , unfoldingCaseThreshold = 2
 
       -- Penalize depth with (size*depth)/scaling
-   , unfoldingCaseScaling = 25
+   , unfoldingCaseScaling = 30
    }
 
 -- Helpers for "GHC.Driver.Session"

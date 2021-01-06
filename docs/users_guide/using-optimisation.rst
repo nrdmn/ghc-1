@@ -1460,11 +1460,11 @@ by saying ``-fno-wombat``.
     often adjusting the scaling is enough and preferably.
 
 .. ghc-flag:: -funfolding-case-scaling=⟨n⟩
-    :shortdesc: *default: 25.* Apply a penalty of (inlining_cost * `1/n`) for each level of case nesting.
+    :shortdesc: *default: 30.* Apply a penalty of (inlining_cost * `1/n`) for each level of case nesting.
     :type: dynamic
     :category:
 
-    :default: 25
+    :default: 30
 
     .. index::
        single: inlining, controlling
